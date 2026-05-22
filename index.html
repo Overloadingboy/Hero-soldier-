@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Project Overload: Tactical Defense</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #111;
+            color: white;
+            font-family: sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px #000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h2>DISTANCE: <span id="distance">0</span></h2>
+        <h3 style="color: gold;">🪙 <span id="coins">0</span></h3>
+        <h3 style="color: #ff4444;">♥️ HEALTH: <span id="health">100</span>%</h3>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- ASSET LOADER ---
+    // Make sure these filenames match exactly what you upload to your GitHub repo
+    const imgHelicopter = new Image();
+    imgHelicopter.src = 'helicopter.png'; // Upload a 60x30px transparent PNG
+
+    const imgHero = new Image();
+    imgHero.src = 'hero.png'; // Upload a 30x30px transparent PNG
+
+    // Game Variables
+    let distance = 0;
+    let coins = 0;
+    let baseHealth = 100;
+    let frameCount = 0;
+
+    // Tactical Aiming Variables
+    let isAiming = false;
+    let aimX = 0;
+    let aimY = 0;
+    const playerX = canvas.width - 150; // Tower width edge
+    const playerY = canvas.height / 2;
+
+    const tower = { width: 150 };
+    const bullets = [];
+    const enemies = [];
+    const particles = [];
+
+    // --- CONTROLS: Drag to Aim, Release to Shoot ---
+    canvas.addEventListener('pointerdown', (e) => {
+        isAiming = true;
+        aimX = e.clientX;
+        aimY = e.clientY;
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+        if (isAiming) {
+            aimX = e.clientX;
+            aimY = e.clientY;
+        }
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+        isAiming = false;
+        const angle = Math.atan2(aimY - playerY, aimX - playerX);
+        
+        bullets.push({
+            x: playerX,
+            y: playerY,
+            vx: Math.cos(angle) * 20, // Increased bullet speed
+            vy: Math.sin(angle) * 20,
+            radius: 5,
+            color: '#00ffff' // Neon blue bullets
+        });
+    });
+
+    function spawnEnemy() {
+        if (frameCount % 80 === 0) { 
+            enemies.push({
+                x: -60,
+                y: Math.random() * (canvas.height * 0.7) + 50,
+                width: 60,
+                height: 30,
+                vx: 1.5 + Math.random() * 2,
+                hp: 20
+            });
+        }
+    }
+
+    function createExplosion(x, y) {
+        for(let i=0; i<20; i++) {
+            particles.push({
+                x: x, y: y,
+                vx: (Math.random() - 0.5) * 12,
+                vy: (Math.random() - 0.5) * 12,
+                life: 30,
+                color: Math.random() > 0.5 ? '#ff0000' : '#ffaa00'
+            });
+        }
+    }
+
+    function update() {
+        frameCount++;
+        distance++;
+        
+        document.getElementById('distance').innerText = distance;
+        document.getElementById('coins').innerText = coins;
+        document.getElementById('health').innerText = baseHealth;
+
+        spawnEnemy();
+
+        // Update Bullets
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            let b = bullets[i];
+            b.x += b.vx;
+            b.y += b.vy;
+            if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
+        }
+
+        // Update Enemies & Collisions
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            let e = enemies[i];
+            e.x += e.vx;
+            
+            // Enemy hits tower
+            if (e.x + e.width >= canvas.width - tower.width) {
+                baseHealth -= 10;
+                createExplosion(e.x + e.width, e.y + e.height/2);
+                enemies.splice(i, 1);
+                continue;
+            }
+
+            // Bullet hits enemy
+            for (let j = bullets.length - 1; j >= 0; j--) {
+                let b = bullets[j];
+                if (b.x > e.x && b.x < e.x + e.width && b.y > e.y && b.y < e.y + e.height) {
+                    e.hp -= 10;
+                    bullets.splice(j, 1);
+                    
+                    if (e.hp <= 0) {
+                        createExplosion(e.x + e.width/2, e.y + e.height/2);
+                        coins += 50;
+                        enemies.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        if (baseHealth <= 0) {
+            alert("Sector Breached! Refresh to restart.");
+            baseHealth = 100; distance = 0; coins = 0; enemies.length = 0;
+        }
+    }
+
+    function draw() {
+        // Background
+        ctx.fillStyle = '#0f0f13';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Tower Structure
+        const towerX = canvas.width - tower.width;
+        ctx.fillStyle = '#1e1e24';
+        ctx.fillRect(towerX, 0, tower.width, canvas.height);
+
+        // Player / Hero Location
+        if (imgHero.complete && imgHero.naturalHeight !== 0) {
+            ctx.drawImage(imgHero, playerX + 10, playerY - 15, 30, 30);
+        } else {
+            ctx.fillStyle = '#00ff00'; // Fallback green dot
+            ctx.fillRect(playerX + 10, playerY - 15, 30, 30);
+        }
+
+        // Draw Laser Sight (if aiming)
+        if (isAiming) {
+            ctx.beginPath();
+            ctx.moveTo(playerX, playerY);
+            ctx.lineTo(aimX, aimY);
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)'; // Transparent red laser
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]); // Dashed line
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset
+        }
+
+        // Draw Enemies
+        enemies.forEach(e => {
+            // Check if image loaded, otherwise draw placeholder
+            if (imgHelicopter.complete && imgHelicopter.naturalHeight !== 0) {
+                ctx.drawImage(imgHelicopter, e.x, e.y, e.width, e.height);
+            } else {
+                ctx.fillStyle = '#6b7280';
+                ctx.fillRect(e.x, e.y, e.width, e.height);
+                ctx.fillStyle = 'red';
+                ctx.fillRect(e.x + e.width - 10, e.y + 10, 10, 10); // Red cockpit
+            }
+        });
+
+        // Bullets
+        bullets.forEach(b => {
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+            ctx.fillStyle = b.color;
+            ctx.fill();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = b.color;
+        });
+        ctx.shadowBlur = 0;
+
+        // Particles
+        particles.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life / 30;
+            ctx.fillRect(p.x, p.y, 4, 4);
+        });
+        ctx.globalAlpha = 1.0;
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+</script>
+</body>
+</html>
